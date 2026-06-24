@@ -1,0 +1,80 @@
+/* ==========================================================================
+   BakeFlow ERP — production.css
+   Production module styles: batch selection, ingredient preview, output form
+   ========================================================================== */
+
+.production-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+  .production-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Ingredient usage preview table */
+.ingredient-preview {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.ingredient-preview__header {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.ingredient-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ingredient-row:last-child { border-bottom: none; }
+
+.ingredient-row__name {
+  text-transform: capitalize;
+  color: var(--color-text-secondary);
+}
+
+.ingredient-row__used   { font-weight: var(--font-weight-medium); }
+.ingredient-row__stock  { color: var(--color-text-muted); font-size: var(--font-size-xs); }
+
+.ingredient-row.is-insufficient {
+  background-color: var(--color-danger-bg);
+}
+
+.ingredient-row.is-insufficient .ingredient-row__name { color: var(--color-danger); }
+
+/* Output grid: bread type quantities */
+.output-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-3);
+}
+
+@media (min-width: 480px) {
+  .output-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.output-field__label {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+  margin-bottom: var(--space-1);
+}

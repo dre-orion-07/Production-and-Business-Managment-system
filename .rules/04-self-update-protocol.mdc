@@ -1,0 +1,53 @@
+---
+description: Rules for keeping the knowledge base up to date
+globs: [".kb/**/*.md", ".rules/**/*.mdc"]
+alwaysApply: true
+---
+
+# Self-Update Protocol
+
+## When You MUST Update the Knowledge Base
+
+### Trigger Conditions
+Update the relevant `.kb/` file immediately when you:
+1. Change a data model field name, add a field, or remove a field
+2. Add, remove, or change a business rule
+3. Add a new module, component, or utility file
+4. Change how storage.js works (new function, changed signature)
+5. Add a new localStorage key (update `.kb/02-tech-stack.md` key table)
+6. Discover that a documented rule is wrong or incomplete
+7. Add a new ADR-level architectural decision
+
+### Required Steps
+```
+1. Identify which .kb/ file(s) are affected
+2. Edit those files with accurate information
+3. Add entry to .kb/08-change-log.md:
+   ### YYYY-MM-DD — [agent name]
+   - [affected file]: what changed and why
+4. If it's an architectural decision → add ADR to .kb/07-decisions-and-adr.md
+```
+
+## What Counts as a Knowledge Base Update
+
+| Change Type | Action |
+|---|---|
+| New data model field | Update `.kb/03-architecture.md` |
+| New business rule | Update `.kb/01-project-overview.md` or `.kb/03-architecture.md` |
+| New forbidden pattern discovered | Add to `.kb/05-hallucination-traps.md` AND `.rules/03-forbidden-patterns.mdc` |
+| New tech decision | Add ADR to `.kb/07-decisions-and-adr.md` |
+| New localStorage key | Update tech stack table in `.kb/02-tech-stack.md` |
+| New testing requirement | Update `.kb/06-testing-strategy.md` |
+| Any of the above | Always add to `.kb/08-change-log.md` |
+
+## What NOT to Do
+- ❌ Do NOT leave .kb/ files stale after a breaking change
+- ❌ Do NOT silently change behaviour that contradicts documented rules without updating the rule
+- ❌ Do NOT add a hallucination trap to code comments without also adding it to `.kb/05-hallucination-traps.md`
+
+## Verification
+Before closing a task, confirm:
+- [ ] Does the implemented code match what is documented in .kb/03-architecture.md?
+- [ ] Are all changed data models reflected in .kb/03-architecture.md?
+- [ ] Is .kb/08-change-log.md updated?
+- [ ] If architecture changed, is a new ADR added?

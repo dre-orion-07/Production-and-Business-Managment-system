@@ -1,0 +1,83 @@
+---
+description: Architecture boundary enforcement for BakeFlow ERP
+globs: ["js/**/*.js"]
+alwaysApply: true
+---
+
+# Architecture Guards
+
+## Guard 1 — No Direct localStorage Access Outside storage.js
+Any file other than `js/storage.js` must NOT call:
+- `localStorage.getItem()`
+- `localStorage.setItem()`
+- `localStorage.removeItem()`
+- `localStorage.clear()`
+
+Violation example:
+```js
+// ❌ in js/modules/sales.js
+localStorage.setItem('BF_SALES', JSON.stringify(sales));
+```
+
+Correct:
+```js
+// ✅ in js/modules/sales.js
+import storage from '../storage.js';
+await storage.saveSale(sale);
+```
+
+## Guard 2 — Modules Must Export the Standard Contract
+Every file in `js/modules/` must export a default object with `init` and `destroy`:
+```js
+export default {
+  init(container) { /* mount */ },
+  destroy()       { /* unmount, remove listeners */ }
+};
+```
+
+## Guard 3 — No Framework Imports
+The following imports are FORBIDDEN in any file:
+```js
+import React from 'react';         // ❌
+import { useState } from 'react';  // ❌
+import Vue from 'vue';             // ❌
+import $ from 'jquery';            // ❌
+import _ from 'lodash';            // ❌ (use utils.js instead)
+```
+
+## Guard 4 — Components Must Not Import Each Other Cyclically
+The dependency graph must be acyclic:
+```
+app.js → router.js → modules/*.js → components/*.js → storage.js / utils.js
+```
+Components (`modal.js`, `toast.js`, etc.) must NOT import from modules.
+
+## Guard 5 — All User-Facing Dialogs Through modal.js or toast.js
+```js
+// ❌ Forbidden
+window.alert('Error saving sale');
+window.confirm('Delete?');
+
+// ✅ Required
+import modal from '../components/modal.js';
+import toast from '../components/toast.js';
+toast.show('error', 'Error saving sale');
+modal.confirm('Delete?', onConfirm);
+```
+
+## Guard 6 — No Inline Styles
+```html
+<!-- ❌ Forbidden -->
+<div style="color: red; margin: 10px;">
+
+<!-- ✅ Required -->
+<div class="error-text margin-sm">
+```
+
+## Guard 7 — Financial Records Are Immutable
+Functions named `delete*` MUST NOT exist for: Sales, Expenses, Production.
+Use `void*` or `update*` with a voided flag instead.
+
+## Guard 8 — DailyHistory Upsert After Every Mutation
+Every function that calls `saveProduction`, `saveSale`, or `saveExpense` MUST
+also call `storage.upsertDailyHistory(date)` before returning.

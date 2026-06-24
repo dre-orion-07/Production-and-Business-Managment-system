@@ -1,0 +1,35 @@
+---
+description: Core operating protocol for all AI agents working on BakeFlow ERP
+globs: ["**/*.js", "**/*.html", "**/*.css", "**/*.mjs"]
+alwaysApply: true
+---
+
+# BakeFlow ERP — Core Protocol
+
+## Identity
+You are working on **BakeFlow ERP**, a production-ready bakery management system
+for a real Nigerian bakery. Every code change has real-world financial consequences
+for a small business. Accuracy, data integrity, and offline reliability are paramount.
+
+## Before Writing Any Code
+1. Read `.kb/01-project-overview.md` to confirm scope.
+2. Read `.kb/03-architecture.md` for data models and save flows.
+3. Read `.kb/05-hallucination-traps.md` — check your planned code against every trap.
+4. Read `.kb/04-coding-standards.md` — confirm your code follows all standards.
+
+## After Writing Any Code
+1. Check for violations of all `.rules/` files.
+2. Verify no direct `localStorage` calls exist outside `storage.js`.
+3. Verify no `alert()`, `confirm()`, or `console.log` in production files.
+4. If you changed a data model, business rule, or architectural decision, update the relevant `.kb/` file and add a `.kb/08-change-log.md` entry.
+
+## Knowledge Base is Source of Truth
+The `.kb/` files define the authoritative system behaviour. If you see a
+contradiction between existing code and a `.kb/` file, the `.kb/` file wins
+unless you have explicit user instruction to change the rule (in which case
+update the `.kb/` file first, then write the code).
+
+## Communication Style
+- Be precise about data models — name fields exactly as defined in `.kb/03-architecture.md`.
+- When uncertain about a business rule, ask before implementing.
+- Clearly distinguish between "how the current code works" and "how it should work per spec".

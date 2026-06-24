@@ -1,0 +1,114 @@
+---
+description: Patterns that are explicitly forbidden in BakeFlow ERP
+globs: ["**/*.js", "**/*.html"]
+alwaysApply: true
+---
+
+# Forbidden Patterns
+
+## FP-1: console.log in Production Code
+```js
+// ❌ FORBIDDEN
+console.log(data);
+console.warn(msg);
+console.error(err); // except in the logger utility itself
+
+// ✅ USE INSTEAD
+import { logger } from '../utils.js';
+logger.info('message', data);
+logger.error('message', err);
+```
+
+## FP-2: var Declaration
+```js
+// ❌ FORBIDDEN
+var total = 0;
+
+// ✅ USE INSTEAD
+let total = 0;
+const MAX = 100;
+```
+
+## FP-3: Mutation of Function Arguments
+```js
+// ❌ FORBIDDEN — mutates the passed object
+function updateCustomer(customer, payment) {
+  customer.outstanding -= payment; // mutates caller's object
+}
+
+// ✅ USE INSTEAD — return new object
+function updateCustomer(customer, payment) {
+  return { ...customer, outstanding: recalculate(customer) };
+}
+```
+
+## FP-4: Date Object as Storage Key
+```js
+// ❌ FORBIDDEN
+const key = new Date(); // object, not string
+const key = new Date().toString(); // locale-dependent string
+
+// ✅ USE INSTEAD
+const key = new Date().toISOString().split('T')[0]; // "2025-07-07"
+```
+
+## FP-5: Unguarded Ingredient Arithmetic
+```js
+// ❌ FORBIDDEN — floating-point drift
+const amount = batch.flour * mixes;
+
+// ✅ USE INSTEAD
+const amount = parseFloat((batch.flour * mixes).toFixed(3));
+```
+
+## FP-6: innerHTML with User-Supplied Data
+```html
+<!-- ❌ FORBIDDEN — XSS risk -->
+<div id="name"></div>
+<script>document.getElementById('name').innerHTML = userInput;</script>
+
+<!-- ✅ USE INSTEAD -->
+<script>document.getElementById('name').textContent = userInput;</script>
+```
+
+## FP-7: Hardcoded Naira Symbol as ASCII
+```js
+// ❌ FORBIDDEN — wrong symbol
+const label = 'N' + amount; // Latin N
+
+// ✅ USE INSTEAD — Unicode Naira sign
+const label = '₦' + amount.toFixed(2);
+// or use the formatCurrency() utility from utils.js
+```
+
+## FP-8: Bread Type as Freeform String
+```js
+// ❌ FORBIDDEN — typos create ghost inventory
+const type = userInputField.value;
+inventory[type] -= qty;
+
+// ✅ USE INSTEAD — validate against constant
+import { BREAD_TYPES } from '../utils.js';
+if (!BREAD_TYPES.includes(type)) throw new Error('Invalid bread type');
+inventory[type] -= qty;
+```
+
+## FP-9: Synchronous Blocking Loops Over All Records
+```js
+// ❌ FORBIDDEN — blocks UI for large datasets
+const allSales = storage.getSales();
+const total = allSales.reduce(...);
+// render synchronously
+
+// ✅ USE INSTEAD — use date-filtered queries
+const todaySales = storage.getSales({ date: today });
+```
+
+## FP-10: Storing Dates as Date Objects in localStorage
+```js
+// ❌ FORBIDDEN — Date objects serialise oddly
+record.date = new Date(); // becomes string on JSON.stringify but loses type on parse
+
+// ✅ USE INSTEAD — always ISO string
+record.date = new Date().toISOString(); // "2025-07-07T14:32:00.000Z"
+```

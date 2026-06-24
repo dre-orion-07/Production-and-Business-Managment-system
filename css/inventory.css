@@ -1,0 +1,98 @@
+/* ==========================================================================
+   BakeFlow ERP — inventory.css
+   Ingredient inventory and finished bread inventory module styles
+   ========================================================================== */
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .inventory-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .inventory-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Ingredient / bread stock card */
+.stock-card {
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow var(--transition-fast);
+}
+
+.stock-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.stock-card.is-low {
+  border-color: var(--color-warning);
+  background-color: var(--color-warning-bg);
+}
+
+.stock-card.is-empty {
+  border-color: var(--color-danger);
+  background-color: var(--color-danger-bg);
+}
+
+.stock-card__name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+}
+
+.stock-card__amount {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.stock-card__unit {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Transaction history list */
+.tx-history {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.tx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border);
+}
+
+.tx-item--production { border-left: 3px solid var(--color-success); }
+.tx-item--sale       { border-left: 3px solid var(--color-brand-primary); }
+
+.tx-item__type {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+}
+
+.tx-item__qty { font-weight: var(--font-weight-medium); }
+.tx-item__time { font-size: var(--font-size-xs); color: var(--color-text-muted); }
