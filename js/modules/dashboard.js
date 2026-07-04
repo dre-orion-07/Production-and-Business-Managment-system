@@ -10,19 +10,13 @@ import storage from '../storage.js';
 import card    from '../components/card.js';
 import { navigate } from '../router.js';
 import {
-  BREAD_TYPES, INGREDIENT_KEYS, INGREDIENT_LABELS,
+  BREAD_TYPES,
   formatCurrency, formatDate, timeAgo,
   today, calculateNetProfit
 } from '../utils.js';
 
 /** @type {AbortController|null} */
 let controller = null;
-
-/** Ingredient low-stock thresholds (kg/g/liters) */
-const ING_THRESHOLDS = {
-  flour: 5, wheatFlour: 2, sugar: 1, salt: 0.5, yeast: 50,
-  margarine: 0.3, oil: 0.3, improver: 10, preservative: 5, flavour: 5, water: 2
-};
 
 /** Bread low-stock thresholds (loaves) */
 const BREAD_THRESHOLDS = {
@@ -32,11 +26,6 @@ const BREAD_THRESHOLDS = {
 const BREAD_LABELS = {
   mini: 'Mini', small: 'Small', medium: 'Medium', big: 'Big',
   sardine: 'Sardine', chocolate: 'Chocolate', coconut: 'Coconut'
-};
-
-const ING_UNITS = {
-  flour: 'kg', wheatFlour: 'kg', sugar: 'kg', salt: 'kg', yeast: 'g',
-  margarine: 'kg', oil: 'liters', improver: 'g', preservative: 'g', flavour: 'ml', water: 'liters'
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -84,8 +73,9 @@ function render(container) {
   const { netProfit }  = calculateNetProfit(todaySales, todayProds, todayExpenses);
 
   // Low-stock alerts
-  const lowIngredients = INGREDIENT_KEYS.filter(k =>
-    (ingStock[k]?.amount ?? 0) <= ING_THRESHOLDS[k]
+  const ingThresholds = storage.getIngredientThresholds();
+  const lowIngredients = storage.getIngredientKeys().filter(k =>
+    (ingStock[k]?.amount ?? 0) <= (ingThresholds[k] ?? 0)
   );
   const lowBread = BREAD_TYPES.filter(bt =>
     (breadInv[bt] || 0) <= BREAD_THRESHOLDS[bt]
@@ -176,11 +166,14 @@ function buildLowStockBanner(lowIng, lowBread, ingStock, breadInv) {
   const list = document.createElement('div');
   list.className = 'low-stock-banner__list';
 
+  const ingLabels = storage.getIngredientLabels();
+  const ingUnits  = storage.getIngredientUnits();
+
   for (const key of lowIng) {
     const amt = ingStock[key]?.amount ?? 0;
     const chip = document.createElement('button');
     chip.className = `low-stock-chip ${amt === 0 ? 'low-stock-chip--out' : 'low-stock-chip--low'}`;
-    chip.textContent = `${INGREDIENT_LABELS[key]}: ${amt} ${ING_UNITS[key]}`;
+    chip.textContent = `${ingLabels[key]}: ${amt} ${ingUnits[key]}`;
     chip.title = 'Click to restock';
     chip.addEventListener('click', () => navigate('/inventory'), { signal: controller.signal });
     list.appendChild(chip);

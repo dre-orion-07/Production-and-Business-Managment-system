@@ -10,44 +10,11 @@ import storage from '../storage.js';
 import modal   from '../components/modal.js';
 import toast   from '../components/toast.js';
 import {
-  INGREDIENT_KEYS, INGREDIENT_LABELS, logger
+  CUSTOM_INGREDIENT_UNITS, logger
 } from '../utils.js';
 
 /** @type {AbortController|null} */
 let controller = null;
-
-/** Unit for each ingredient key */
-const INGREDIENT_UNITS = {
-  flour:        'kg',
-  wheatFlour:   'kg',
-  sugar:        'kg',
-  salt:         'kg',
-  yeast:        'g',
-  margarine:    'kg',
-  oil:          'liters',
-  improver:     'g',
-  preservative: 'g',
-  flavour:      'ml',
-  water:        'liters'
-};
-
-/**
- * Low-stock thresholds — warn when stock falls below these values.
- * Adjust per bakery needs.
- */
-const LOW_STOCK_THRESHOLDS = {
-  flour:        5,    // kg
-  wheatFlour:   2,    // kg
-  sugar:        1,    // kg
-  salt:         0.5,  // kg
-  yeast:        50,   // g
-  margarine:    0.3,  // kg
-  oil:          0.3,  // liters
-  improver:     10,   // g
-  preservative: 5,    // g
-  flavour:      5,    // ml
-  water:        2     // liters
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT / DESTROY
@@ -99,7 +66,13 @@ function render(container) {
   adjustBtn.innerHTML = '✏️ Manual Adjust';
   adjustBtn.addEventListener('click', () => openAdjustForm(container), { signal: controller.signal });
 
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn btn-secondary';
+  addBtn.innerHTML = '<span aria-hidden="true">🧂+</span> Add New Ingredient';
+  addBtn.addEventListener('click', () => openAddIngredientForm(container), { signal: controller.signal });
+
   btnGroup.appendChild(restockBtn);
+  btnGroup.appendChild(addBtn);
   btnGroup.appendChild(adjustBtn);
 
   header.appendChild(titleWrap);
@@ -107,10 +80,16 @@ function render(container) {
   container.appendChild(header);
 
   // ── Low-stock alerts ─────────────────────────────────────────────────────
-  const stock = storage.getIngredientStock();
-  const lowItems = INGREDIENT_KEYS.filter(key => {
+  const stock       = storage.getIngredientStock();
+  const customKeys  = storage.getCustomIngredients().map(c => c.key);
+  const allKeys     = storage.getIngredientKeys();
+  const labels      = storage.getIngredientLabels();
+  const units       = storage.getIngredientUnits();
+  const thresholds  = storage.getIngredientThresholds();
+
+  const lowItems = allKeys.filter(key => {
     const amount    = stock[key]?.amount ?? 0;
-    const threshold = LOW_STOCK_THRESHOLDS[key] ?? 0;
+    const threshold = thresholds[key] ?? 0;
     return amount <= threshold;
   });
 
@@ -122,7 +101,7 @@ function render(container) {
       <span class="alert__icon" aria-hidden="true">⚠️</span>
       <div>
         <strong>Low Stock Alert:</strong>
-        ${lowItems.map(k => `${INGREDIENT_LABELS[k]} (${stock[k]?.amount ?? 0} ${INGREDIENT_UNITS[k]})`).join(', ')}
+        ${lowItems.map(k => `${labels[k]} (${stock[k]?.amount ?? 0} ${units[k]})`).join(', ')}
       </div>
     `;
     container.appendChild(alertBanner);
@@ -133,12 +112,13 @@ function render(container) {
   grid.className = 'inventory-grid';
   grid.id = 'ingredient-stock-grid';
 
-  for (const key of INGREDIENT_KEYS) {
+  for (const key of allKeys) {
     const amount    = stock[key]?.amount ?? 0;
-    const unit      = INGREDIENT_UNITS[key];
-    const threshold = LOW_STOCK_THRESHOLDS[key] ?? 0;
+    const unit      = units[key];
+    const threshold = thresholds[key] ?? 0;
     const isLow     = amount <= threshold;
     const isEmpty   = amount === 0;
+    const isCustom  = customKeys.includes(key);
 
     const card = document.createElement('div');
     card.className = `inv-card ${isEmpty ? 'inv-card--empty' : isLow ? 'inv-card--low' : 'inv-card--ok'}`;
@@ -150,10 +130,11 @@ function render(container) {
 
     card.innerHTML = `
       <div class="inv-card__header">
-        <span class="inv-card__name">${INGREDIENT_LABELS[key]}</span>
+        <span class="inv-card__name">${labels[key]}</span>
         ${isEmpty  ? '<span class="badge badge-danger">Out</span>'   : ''}
         ${isLow && !isEmpty ? '<span class="badge badge-warning">Low</span>' : ''}
         ${!isLow  ? '<span class="badge badge-success">OK</span>'    : ''}
+        ${isCustom ? '<button type="button" class="inv-card__remove" title="Remove custom ingredient" aria-label="Remove ' + labels[key] + '">✕</button>' : ''}
       </div>
       <div class="inv-card__amount">
         <span class="inv-card__value">${amount}</span>
@@ -161,11 +142,18 @@ function render(container) {
       </div>
       <div class="inv-card__bar" role="progressbar"
            aria-valuenow="${amount}" aria-valuemin="0" aria-valuemax="${maxDisplay}"
-           aria-label="${INGREDIENT_LABELS[key]} stock level">
+           aria-label="${labels[key]} stock level">
         <div class="inv-card__bar-fill" style="width:${pct}%"></div>
       </div>
       <p class="inv-card__threshold">Low threshold: ${threshold} ${unit}</p>
     `;
+
+    if (isCustom) {
+      card.querySelector('.inv-card__remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        confirmRemoveIngredient(key, labels[key], container);
+      }, { signal: controller.signal });
+    }
 
     grid.appendChild(card);
   }
@@ -182,11 +170,14 @@ function render(container) {
  * @param {HTMLElement} pageContainer
  */
 function openRestockForm(pageContainer) {
-  const stock = storage.getIngredientStock();
+  const stock  = storage.getIngredientStock();
+  const keys   = storage.getIngredientKeys();
+  const labels = storage.getIngredientLabels();
+  const units  = storage.getIngredientUnits();
 
-  const fields = INGREDIENT_KEYS.map(key => ({
+  const fields = keys.map(key => ({
     name:        key,
-    label:       `${INGREDIENT_LABELS[key]} (${INGREDIENT_UNITS[key]}) — currently ${stock[key]?.amount ?? 0}`,
+    label:       `${labels[key]} (${units[key]}) — currently ${stock[key]?.amount ?? 0}`,
     type:        'number',
     value:       '',
     placeholder: 'Amount to add…',
@@ -200,7 +191,7 @@ function openRestockForm(pageContainer) {
     onSubmit(values) {
       try {
         let updated = 0;
-        for (const key of INGREDIENT_KEYS) {
+        for (const key of keys) {
           const toAdd = parseFloat(values[key]) || 0;
           if (toAdd > 0) {
             storage.adjustIngredientStock(key, toAdd);
@@ -230,11 +221,14 @@ function openRestockForm(pageContainer) {
  * @param {HTMLElement} pageContainer
  */
 function openAdjustForm(pageContainer) {
-  const stock = storage.getIngredientStock();
+  const stock  = storage.getIngredientStock();
+  const keys   = storage.getIngredientKeys();
+  const labels = storage.getIngredientLabels();
+  const units  = storage.getIngredientUnits();
 
-  const fields = INGREDIENT_KEYS.map(key => ({
+  const fields = keys.map(key => ({
     name:        key,
-    label:       `${INGREDIENT_LABELS[key]} (${INGREDIENT_UNITS[key]})`,
+    label:       `${labels[key]} (${units[key]})`,
     type:        'number',
     value:       stock[key]?.amount ?? 0,
     placeholder: '0'
@@ -248,11 +242,11 @@ function openAdjustForm(pageContainer) {
       try {
         // Build a complete stock object and save it
         const newStock = {};
-        for (const key of INGREDIENT_KEYS) {
+        for (const key of keys) {
           const amount = parseFloat(values[key]);
           newStock[key] = {
             amount: isNaN(amount) || amount < 0 ? 0 : parseFloat(amount.toFixed(3)),
-            unit:   INGREDIENT_UNITS[key]
+            unit:   units[key]
           };
         }
         storage.saveIngredientStock(newStock);
@@ -264,6 +258,89 @@ function openAdjustForm(pageContainer) {
       }
     }
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADD NEW INGREDIENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Opens a form to register a brand-new ingredient with a name, unit,
+ * price per unit, and starting stock — no code changes required.
+ * The ingredient immediately becomes available in Inventory, Settings
+ * (unit costs), and Batch Mix recipes.
+ * @param {HTMLElement} pageContainer
+ */
+function openAddIngredientForm(pageContainer) {
+  modal.form({
+    title:       'Add New Ingredient',
+    fields: [
+      {
+        name: 'label', label: 'Ingredient Name', type: 'text',
+        required: true, placeholder: 'e.g. Cocoa Powder'
+      },
+      {
+        name: 'unit', label: 'Unit', type: 'select',
+        required: true, options: CUSTOM_INGREDIENT_UNITS
+      },
+      {
+        name: 'price', label: 'Price per unit (₦)', type: 'number',
+        required: true, value: 0, placeholder: '0.00'
+      },
+      {
+        name: 'initialStock', label: 'Starting Stock', type: 'number',
+        value: 0, placeholder: '0'
+      },
+      {
+        name: 'threshold', label: 'Low-stock threshold (optional)', type: 'number',
+        value: 0, placeholder: '0',
+        hint: 'You\'ll get a low-stock alert when the amount falls to or below this.'
+      }
+    ],
+    submitLabel: 'Add Ingredient',
+    onSubmit(values) {
+      try {
+        const entry = storage.addCustomIngredient({
+          label:        values.label,
+          unit:         values.unit,
+          price:        parseFloat(values.price) || 0,
+          initialStock: parseFloat(values.initialStock) || 0,
+          threshold:    parseFloat(values.threshold) || 0
+        });
+        toast.show('success', `"${entry.label}" added — usable in Batch Mix recipes now.`);
+        render(pageContainer);
+      } catch (err) {
+        logger.error('Add ingredient failed', err);
+        toast.show('error', err.message || 'Failed to add ingredient.');
+      }
+    }
+  });
+}
+
+/**
+ * Confirms and removes a custom ingredient.
+ * @param {string} key
+ * @param {string} label
+ * @param {HTMLElement} pageContainer
+ */
+function confirmRemoveIngredient(key, label, pageContainer) {
+  modal.confirm(
+    `Remove "${label}"? Its stock and price will be deleted. Any batch mix recipes that already use it will treat it as 0 going forward.`,
+    () => {
+      try {
+        storage.removeCustomIngredient(key);
+        toast.show('success', `"${label}" removed.`);
+        render(pageContainer);
+      } catch (err) {
+        logger.error('Remove ingredient failed', err);
+        toast.show('error', err.message || 'Failed to remove ingredient.');
+      }
+    },
+    null,
+    'Remove Ingredient',
+    'Remove',
+    'danger'
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -298,6 +375,12 @@ if (!document.getElementById('bakeflow-inventory-styles')) {
     .inv-card__header {
       display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
     }
+    .inv-card__remove {
+      margin-left: auto; background: none; border: none; cursor: pointer;
+      color: var(--color-text-muted); font-size: var(--font-size-sm);
+      line-height: 1; padding: 0.125rem 0.25rem; border-radius: var(--radius-sm);
+    }
+    .inv-card__remove:hover { color: var(--color-danger); background: rgb(239 68 68 / 0.1); }
     .inv-card__name {
       font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold);
       color: var(--color-text-primary);

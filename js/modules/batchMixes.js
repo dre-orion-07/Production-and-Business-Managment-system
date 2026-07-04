@@ -11,31 +11,12 @@ import modal   from '../components/modal.js';
 import toast   from '../components/toast.js';
 import table   from '../components/table.js';
 import {
-  INGREDIENT_KEYS, INGREDIENT_LABELS, BATCH_SIZES,
+  BATCH_SIZES,
   validateBatchMix, formatCurrency, logger
 } from '../utils.js';
 
 /** @type {AbortController|null} */
 let controller = null;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INGREDIENT FORM FIELDS
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Unit for each ingredient key (for display and input) */
-const INGREDIENT_UNITS = {
-  flour:        'kg',
-  wheatFlour:   'kg',
-  sugar:        'kg',
-  salt:         'kg',
-  yeast:        'g',
-  margarine:    'kg',
-  oil:          'liters',
-  improver:     'g',
-  preservative: 'g',
-  flavour:      'ml',
-  water:        'liters'
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENDER
@@ -213,15 +194,19 @@ function openBatchForm(existing, pageContainer) {
   const ingGrid = document.createElement('div');
   ingGrid.className = 'ingredient-grid';
 
-  for (const key of INGREDIENT_KEYS) {
-    const unit    = INGREDIENT_UNITS[key];
+  const ingredientKeys   = storage.getIngredientKeys();
+  const ingredientLabels = storage.getIngredientLabels();
+  const ingredientUnits  = storage.getIngredientUnits();
+
+  for (const key of ingredientKeys) {
+    const unit    = ingredientUnits[key];
     const current = existing?.ingredients?.[key]?.amount ?? 0;
 
     const group = document.createElement('div');
     group.className = 'form-group';
     group.innerHTML = `
       <label class="form-label" for="ing-${key}">
-        ${INGREDIENT_LABELS[key]}
+        ${ingredientLabels[key]}
         <span class="form-unit">(${unit})</span>
       </label>
       <input id="ing-${key}" name="ing_${key}" type="number"
@@ -272,10 +257,12 @@ function handleBatchSubmit(formEl, existing, pageContainer) {
 
   // Collect ingredients
   const ingredients = {};
-  for (const key of INGREDIENT_KEYS) {
+  const ingredientKeys  = storage.getIngredientKeys();
+  const ingredientUnits = storage.getIngredientUnits();
+  for (const key of ingredientKeys) {
     const inputEl = formEl.querySelector(`[name="ing_${key}"]`);
     const amount  = parseFloat(inputEl?.value) || 0;
-    ingredients[key] = { amount, unit: INGREDIENT_UNITS[key] };
+    ingredients[key] = { amount, unit: ingredientUnits[key] };
   }
 
   const mixData = { name, size, ingredients };

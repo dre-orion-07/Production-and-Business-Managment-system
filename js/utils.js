@@ -46,6 +46,78 @@ export const INGREDIENT_LABELS = Object.freeze({
   water:        'Water'
 });
 
+/**
+ * @type {{ [key: string]: string }} Built-in unit for each ingredient.
+ * Single source of truth — previously duplicated across inventory.js,
+ * batchMixes.js, and settings.js.
+ */
+export const INGREDIENT_UNITS = Object.freeze({
+  flour:        'kg',
+  wheatFlour:   'kg',
+  sugar:        'kg',
+  salt:         'kg',
+  yeast:        'g',
+  margarine:    'kg',
+  oil:          'liters',
+  improver:     'g',
+  preservative: 'g',
+  flavour:      'ml',
+  water:        'liters'
+});
+
+/** @type {readonly string[]} Units selectable when adding a custom ingredient. */
+export const CUSTOM_INGREDIENT_UNITS = Object.freeze(['kg', 'g', 'liters', 'ml', 'pieces']);
+
+/**
+ * @type {{ [key: string]: number }} Low-stock thresholds for built-in ingredients.
+ * Single source of truth — previously duplicated across inventory.js and dashboard.js.
+ */
+export const LOW_STOCK_THRESHOLDS = Object.freeze({
+  flour:        5,    // kg
+  wheatFlour:   2,    // kg
+  sugar:        1,    // kg
+  salt:         0.5,  // kg
+  yeast:        50,   // g
+  margarine:    0.3,  // kg
+  oil:          0.3,  // liters
+  improver:     10,   // g
+  preservative: 5,    // g
+  flavour:      5,    // ml
+  water:        2     // liters
+});
+
+/**
+ * Turns a free-text ingredient name into a unique camelCase storage key,
+ * e.g. "Cocoa Powder" -> "cocoaPowder". Appends a numeric suffix if the
+ * generated key collides with an existing one.
+ * @param {string} label
+ * @param {string[]} existingKeys
+ * @returns {string}
+ */
+export function slugifyIngredientKey(label, existingKeys = []) {
+  const words = String(label || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  let base = words
+    .map((w, i) => i === 0
+      ? w.charAt(0).toLowerCase() + w.slice(1)
+      : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join('');
+
+  if (!base) {base = 'ingredient';}
+
+  let key = base;
+  let n = 2;
+  while (existingKeys.includes(key)) {
+    key = `${base}${n}`;
+    n++;
+  }
+  return key;
+}
+
 /** @type {{ [key: string]: string }} Human-readable expense category labels */
 export const EXPENSE_CATEGORY_LABELS = Object.freeze({
   gas:               'Gas',

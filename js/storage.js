@@ -12,6 +12,8 @@ import {
   recalculateOutstanding, calculateNetProfit,
   validateIngredientStock, validateSaleStock,
   BREAD_TYPES, EXPENSE_CATEGORIES, MAX_BACKUP_COUNT,
+  INGREDIENT_KEYS, INGREDIENT_LABELS, INGREDIENT_UNITS, LOW_STOCK_THRESHOLDS,
+  slugifyIngredientKey,
   logger, formatReceiptNumber
 } from './utils.js';
 
@@ -30,7 +32,8 @@ const KEYS = Object.freeze({
   SETTINGS:            'BF_SETTINGS',
   RECEIPT_COUNTER:     'BF_RECEIPT_COUNTER',
   BACKUPS:             'BF_BACKUPS',
-  SEEDED:              'BF_SEEDED'
+  SEEDED:              'BF_SEEDED',
+  CUSTOM_INGREDIENTS:  'BF_CUSTOM_INGREDIENTS'
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -325,6 +328,108 @@ function adjustIngredientStock(key, deltaAmount) {
   };
   write(KEYS.INGREDIENT_STOCK, stock);
   return stock;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOM INGREDIENTS
+// ─────────────────────────────────────────────────────────────────────────────
+// Lets the bakery add new ingredients (name, unit, price, stock) at runtime,
+// without touching code. Built-ins (INGREDIENT_KEYS) stay hardcoded for
+// stability; anything added here is layered on top everywhere ingredients
+// are used — Inventory, Settings costs, Batch Mix recipes, Production, Dashboard.
+
+/**
+ * @returns {Array<{ key: string, label: string, unit: string, threshold: number }>}
+ */
+function getCustomIngredients() {
+  return read(KEYS.CUSTOM_INGREDIENTS, []);
+}
+
+/** @returns {string[]} Built-in + custom ingredient keys */
+function getIngredientKeys() {
+  return [...INGREDIENT_KEYS, ...getCustomIngredients().map(c => c.key)];
+}
+
+/** @returns {{ [key: string]: string }} Built-in + custom ingredient labels */
+function getIngredientLabels() {
+  const labels = { ...INGREDIENT_LABELS };
+  for (const c of getCustomIngredients()) {labels[c.key] = c.label;}
+  return labels;
+}
+
+/** @returns {{ [key: string]: string }} Built-in + custom ingredient units */
+function getIngredientUnits() {
+  const units = { ...INGREDIENT_UNITS };
+  for (const c of getCustomIngredients()) {units[c.key] = c.unit;}
+  return units;
+}
+
+/** @returns {{ [key: string]: number }} Built-in + custom low-stock thresholds */
+function getIngredientThresholds() {
+  const thresholds = { ...LOW_STOCK_THRESHOLDS };
+  for (const c of getCustomIngredients()) {thresholds[c.key] = c.threshold ?? 0;}
+  return thresholds;
+}
+
+/**
+ * Adds a brand-new ingredient: registers it, seeds its stock, and sets its
+ * unit cost — all in one call, no code changes required.
+ * @param {{ label: string, unit: string, price?: number, initialStock?: number, threshold?: number }} input
+ * @returns {{ key: string, label: string, unit: string, threshold: number }} The newly created ingredient
+ * @throws {Error} if label is missing or unit is invalid
+ */
+function addCustomIngredient({ label, unit, price = 0, initialStock = 0, threshold = 0 }) {
+  const trimmedLabel = String(label || '').trim();
+  if (!trimmedLabel) {throw new Error('Ingredient name is required.');}
+  if (!unit) {throw new Error('Ingredient unit is required.');}
+
+  const existingKeys = getIngredientKeys();
+  const key = slugifyIngredientKey(trimmedLabel, existingKeys);
+
+  const entry = { key, label: trimmedLabel, unit, threshold: Number(threshold) || 0 };
+  const custom = getCustomIngredients();
+  custom.push(entry);
+  write(KEYS.CUSTOM_INGREDIENTS, custom);
+
+  // Seed stock for the new ingredient
+  const stock = getIngredientStock();
+  stock[key] = { amount: Math.max(0, Number(initialStock) || 0), unit };
+  write(KEYS.INGREDIENT_STOCK, stock);
+
+  // Seed unit cost for the new ingredient
+  const settings = getSettings();
+  const unitCosts = { ...(settings.unitCosts || {}), [key]: Math.max(0, Number(price) || 0) };
+  saveSettings({ unitCosts });
+
+  logger.info('Custom ingredient added', { key, label: trimmedLabel, unit });
+  return entry;
+}
+
+/**
+ * Removes a custom ingredient (built-in ingredients cannot be removed).
+ * Clears its stock entry and unit cost. Any batch mix recipes that already
+ * reference it keep the leftover key harmlessly (treated as 0 going forward).
+ * @param {string} key
+ */
+function removeCustomIngredient(key) {
+  const custom = getCustomIngredients();
+  const filtered = custom.filter(c => c.key !== key);
+  if (filtered.length === custom.length) {
+    logger.warn('Attempted to remove unknown or built-in ingredient', { key });
+    return;
+  }
+  write(KEYS.CUSTOM_INGREDIENTS, filtered);
+
+  const stock = getIngredientStock();
+  delete stock[key];
+  write(KEYS.INGREDIENT_STOCK, stock);
+
+  const settings = getSettings();
+  const unitCosts = { ...(settings.unitCosts || {}) };
+  delete unitCosts[key];
+  saveSettings({ unitCosts });
+
+  logger.info('Custom ingredient removed', { key });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1113,6 +1218,10 @@ const storage = {
   getBatchMixes, getBatchMixById, saveBatchMix, updateBatchMix, deleteBatchMix,
   // Ingredient Stock
   getIngredientStock, saveIngredientStock, adjustIngredientStock,
+  // Custom Ingredients
+  getCustomIngredients, getIngredientKeys, getIngredientLabels,
+  getIngredientUnits, getIngredientThresholds,
+  addCustomIngredient, removeCustomIngredient,
   // Production
   getProductions, saveProduction,
   // Finished Inventory

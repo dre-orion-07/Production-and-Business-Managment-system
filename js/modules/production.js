@@ -18,7 +18,7 @@ import modal   from '../components/modal.js';
 import toast   from '../components/toast.js';
 import table   from '../components/table.js';
 import {
-  INGREDIENT_KEYS, INGREDIENT_LABELS, BREAD_TYPES,
+  BREAD_TYPES,
   computeIngredientsUsed, computeProductionCost,
   formatCurrency, formatDate, today, logger
 } from '../utils.js';
@@ -235,17 +235,18 @@ function renderProductionForm(panel, pageContainer) {
     const used     = computeIngredientsUsed(batch.ingredients, mixes);
     const settings = storage.getSettings();
     const { cost, hasMissingCosts } = computeProductionCost(used, settings.unitCosts || {});
+    const labels = storage.getIngredientLabels();
 
     // Build preview table
     let html = `<h3 class="form-section-title">Ingredients Used</h3><div class="ing-preview-grid">`;
-    for (const key of INGREDIENT_KEYS) {
+    for (const key of Object.keys(used)) {
       const { amount, unit } = used[key] || { amount: 0, unit: '' };
       if (amount === 0) {continue;}
       const available  = stock[key]?.amount ?? 0;
       const sufficient = available >= amount;
       html += `
         <div class="ing-preview-item ${sufficient ? '' : 'ing-preview-item--warn'}">
-          <span class="ing-preview-item__name">${INGREDIENT_LABELS[key]}</span>
+          <span class="ing-preview-item__name">${labels[key] || key}</span>
           <span class="ing-preview-item__amount">${amount} ${unit}</span>
           ${!sufficient
             ? `<span class="ing-preview-item__stock-warn" title="Insufficient stock">

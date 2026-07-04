@@ -11,16 +11,11 @@ import storage from '../storage.js';
 import modal   from '../components/modal.js';
 import toast   from '../components/toast.js';
 import {
-  INGREDIENT_KEYS, INGREDIENT_LABELS, formatDateTime, logger
+  formatDateTime, logger
 } from '../utils.js';
 
 /** @type {AbortController|null} */
 let controller = null;
-
-const INGREDIENT_UNITS = {
-  flour:'kg', wheatFlour:'kg', sugar:'kg', salt:'kg', yeast:'g',
-  margarine:'kg', oil:'liters', improver:'g', preservative:'g', flavour:'ml', water:'liters'
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT / DESTROY
@@ -175,15 +170,19 @@ function renderIngredientCostsSection(col, _pageContainer) {
   const grid = document.createElement('div');
   grid.className = 'ingredient-costs-grid';
 
-  for (const key of INGREDIENT_KEYS) {
-    const unit    = INGREDIENT_UNITS[key];
+  const keys   = storage.getIngredientKeys();
+  const labels = storage.getIngredientLabels();
+  const units  = storage.getIngredientUnits();
+
+  for (const key of keys) {
+    const unit    = units[key];
     const current = unitCosts[key] ?? 0;
 
     const group = document.createElement('div');
     group.className = 'form-group';
     group.innerHTML = `
       <label class="form-label" for="cost-${key}">
-        ${INGREDIENT_LABELS[key]}
+        ${labels[key]}
         <span class="form-unit text-muted">(₦ per ${unit})</span>
       </label>
       <input id="cost-${key}" name="${key}" type="number"
@@ -199,7 +198,7 @@ function renderIngredientCostsSection(col, _pageContainer) {
   saveBtn.textContent = 'Save Costs';
   saveBtn.addEventListener('click', () => {
     const newCosts = {};
-    for (const key of INGREDIENT_KEYS) {
+    for (const key of keys) {
       const val = parseFloat(form.querySelector(`#cost-${key}`)?.value);
       newCosts[key] = isNaN(val) || val < 0 ? 0 : val;
     }
