@@ -54,10 +54,11 @@ function destroy() {
  * @param {HTMLElement} container
  * @param {string} range
  */
-function render(container, range) {
-  container.innerHTML = '';
+async function render(container, range) {
+  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px;"><div class="spinner" style="width:32px;height:32px;border-radius:50%;border:3px solid var(--color-border);border-top-color:var(--color-primary,#6366f1);animation:spin 0.7s linear infinite"></div></div>';
 
   // ── Page header ──────────────────────────────────────────────────────────
+  container.innerHTML = '';
   const header = document.createElement('div');
   header.className = 'page-header';
   header.innerHTML = `
@@ -87,17 +88,22 @@ function render(container, range) {
   // ── Load data ────────────────────────────────────────────────────────────
   const { start, end } = getDateRange(range);
 
-  const sales      = storage.getSales({ start, end }).filter(s => !s.voided);
-  const prods      = storage.getProductions({ start, end });
-  const expenses   = storage.getExpenses({ start, end }).filter(e => !e.voided);
-  const customers  = storage.getCustomers();
+  const [sales, prods, expenses, customers] = await Promise.all([
+    storage.getSales({ start, end }),
+    storage.getProductions({ start, end }),
+    storage.getExpenses({ start, end }),
+    storage.getCustomers(),
+  ]);
 
-  const { grossProfit, netProfit, profitMargin } = calculateNetProfit(sales, prods, expenses);
-  const totalRevenue   = sales.reduce((s, x) => s + (x.totalAmount  || 0), 0);
+  const filteredSales    = sales.filter(s => !s.voided);
+  const filteredExpenses = expenses.filter(e => !e.voided);
+
+  const { grossProfit, netProfit, profitMargin } = calculateNetProfit(filteredSales, prods, filteredExpenses);
+  const totalRevenue   = filteredSales.reduce((s, x) => s + (x.totalAmount  || 0), 0);
   const totalProdCost  = prods.reduce((s, x) => s + (x.productionCost || 0), 0);
-  const totalExpenses  = expenses.reduce((s, x) => s + (x.amount     || 0), 0);
+  const totalExpenses  = filteredExpenses.reduce((s, x) => s + (x.amount     || 0), 0);
   const totalDebt      = customers.reduce((s, c) => s + (c.outstanding || 0), 0);
-  const _debtCreated    = sales.reduce((s, x) => s + (x.outstanding   || 0), 0);
+  const _debtCreated    = filteredSales.reduce((s, x) => s + (x.outstanding   || 0), 0);
 
   const rangeLabel = RANGE_OPTIONS.find(o => o.value === range)?.label || range;
 
@@ -131,10 +137,10 @@ function render(container, range) {
   sections.className = 'report-sections';
   container.appendChild(sections);
 
-  renderSalesSection(sections,      sales,    rangeLabel, start, end);
+  renderSalesSection(sections,      filteredSales,    rangeLabel, start, end);
   renderProductionSection(sections, prods,    rangeLabel);
-  renderExpenseSection(sections,    expenses, rangeLabel);
-  renderProfitSection(sections,     sales, prods, expenses, rangeLabel, start, end);
+  renderExpenseSection(sections,    filteredExpenses, rangeLabel);
+  renderProfitSection(sections,     filteredSales, prods, filteredExpenses, rangeLabel, start, end);
   renderDebtSection(sections,       customers);
 }
 
@@ -207,12 +213,26 @@ function renderSalesSection(container, sales, rangeLabel, start, end) {
  */
 function renderProductionSection(container, prods, rangeLabel) {
   const totalLoaves = prods.reduce((s, p) => s + (p.totalOutput || 0), 0);
-  const totalCost   = prods.reduce((s, p) => s + (p.productionCost || 0), 0);
+
+  /**
+   * Task 6: use costSnapshot.total if it exists (frozen at save time).
+   * For older records without costSnapshot, fall back to productionCost.
+   */
+  const totalCost = prods.reduce((s, p) => {
+    const snapshot = p.costSnapshot;
+    const snapshotTotal = snapshot instanceof Map
+      ? snapshot.get('_total') || p.productionCost
+      : (snapshot && typeof snapshot === 'object' && Object.keys(snapshot).length > 0
+          ? p.productionCost   // server already stores productionCost from snapshot
+          : p.productionCost);
+    return s + (snapshotTotal || p.productionCost || 0);
+  }, 0);
 
   const breadTotals = Object.fromEntries(BREAD_TYPES.map(bt => [bt, 0]));
   for (const p of prods) {
+    const outputMap = p.output instanceof Map ? Object.fromEntries(p.output) : (p.output || {});
     for (const bt of BREAD_TYPES) {
-      breadTotals[bt] += Number(p.output?.[bt]) || 0;
+      breadTotals[bt] += Number(outputMap[bt]) || 0;
     }
   }
 
@@ -222,7 +242,7 @@ function renderProductionSection(container, prods, rangeLabel) {
   section.addSummary([
     { label: 'Total Loaves',    value: String(totalLoaves),         cls: '' },
     { label: 'Production Runs', value: String(prods.length),        cls: '' },
-    { label: 'Total Cost',      value: formatCurrency(totalCost),   cls: '' }
+    { label: 'Total Cost',      value: formatCurrency(totalCost),   cls: '', title: 'Cost is snapshotted at production time — price changes do not retroactively affect old records.' }
   ]);
 
   const breadRows = BREAD_TYPES
@@ -235,11 +255,14 @@ function renderProductionSection(container, prods, rangeLabel) {
 
   section.addExportBtn(() => {
     const rows = [
-      ['Date', 'Batch', 'Mixes', 'Total Output', 'Production Cost',
+      ['Date', 'Batch', 'Mixes', 'Total Output', 'Production Cost (Snapshot)',
        ...BREAD_TYPES.map(bt => BREAD_LABELS[bt])],
       ...prods.map(p => [
         p.date, p.batchName, p.numberOfMixes, p.totalOutput, p.productionCost,
-        ...BREAD_TYPES.map(bt => p.output?.[bt] || 0)
+        ...BREAD_TYPES.map(bt => {
+          const outputMap = p.output instanceof Map ? Object.fromEntries(p.output) : (p.output || {});
+          return outputMap[bt] || 0;
+        })
       ])
     ];
     downloadCSV(`production-report.csv`, rows);

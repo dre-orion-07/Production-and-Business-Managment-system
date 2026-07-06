@@ -24,9 +24,9 @@ let controller = null;
 /**
  * @param {HTMLElement} container
  */
-function init(container) {
+async function init(container) {
   controller = new AbortController();
-  render(container);
+  await render(container);
 }
 
 function destroy() {
@@ -41,7 +41,7 @@ function destroy() {
 /**
  * @param {HTMLElement} container
  */
-function render(container) {
+async function render(container) {
   container.innerHTML = '';
 
   const header = document.createElement('div');
@@ -63,16 +63,15 @@ function render(container) {
   left.className = 'settings-col';
   settingsLayout.appendChild(left);
 
-  // Right column: backup/restore + storage info
+  // Right column: backup/restore + migration
   const right = document.createElement('div');
   right.className = 'settings-col';
   settingsLayout.appendChild(right);
 
-  renderBakeryProfileSection(left, container);
-  renderIngredientCostsSection(left, container);
-  renderBackupSection(right, container);
-  renderStorageSection(right);
-  renderAutoBackupsSection(right, container);
+  await renderBakeryProfileSection(left, container);
+  await renderIngredientCostsSection(left, container);
+  await renderBackupSection(right, container);
+  renderMigrationSection(right, container);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,8 +82,8 @@ function render(container) {
  * @param {HTMLElement} col
  * @param {HTMLElement} pageContainer
  */
-function renderBakeryProfileSection(col, _pageContainer) {
-  const settings = storage.getSettings();
+async function renderBakeryProfileSection(col, _pageContainer) {
+  const settings = await storage.getSettings();
   const section  = createSettingsCard('🏪 Bakery Profile');
   col.appendChild(section);
 
@@ -123,11 +122,11 @@ function renderBakeryProfileSection(col, _pageContainer) {
   saveBtn.type = 'button';
   saveBtn.className = 'btn btn-primary';
   saveBtn.textContent = 'Save Profile';
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     const name = form.querySelector('#shop-name').value.trim();
     if (!name) { toast.show('error', 'Shop name is required.'); return; }
     try {
-      storage.saveSettings({
+      await storage.saveSettings({
         shopName: name,
         address:  form.querySelector('#shop-address').value.trim(),
         phone:    form.querySelector('#shop-phone').value.trim(),
@@ -151,8 +150,8 @@ function renderBakeryProfileSection(col, _pageContainer) {
  * @param {HTMLElement} col
  * @param {HTMLElement} pageContainer
  */
-function renderIngredientCostsSection(col, _pageContainer) {
-  const settings   = storage.getSettings();
+async function renderIngredientCostsSection(col, _pageContainer) {
+  const settings   = await storage.getSettings();
   const unitCosts  = settings.unitCosts || {};
 
   const section = createSettingsCard('💰 Ingredient Unit Costs');
@@ -160,7 +159,7 @@ function renderIngredientCostsSection(col, _pageContainer) {
 
   const hint = document.createElement('p');
   hint.className = 'settings-hint';
-  hint.textContent = 'Set the cost per unit for each ingredient. Used to calculate production cost. Leave at 0 if unknown.';
+  hint.textContent = 'Set the cost per unit for each ingredient. Used to calculate production cost. Updating here also updates ingredient price history.';
   section.appendChild(hint);
 
   const form = document.createElement('form');
@@ -170,9 +169,9 @@ function renderIngredientCostsSection(col, _pageContainer) {
   const grid = document.createElement('div');
   grid.className = 'ingredient-costs-grid';
 
-  const keys   = storage.getIngredientKeys();
-  const labels = storage.getIngredientLabels();
-  const units  = storage.getIngredientUnits();
+  const keys   = await storage.getIngredientKeys();
+  const labels = await storage.getIngredientLabels();
+  const units  = await storage.getIngredientUnits();
 
   for (const key of keys) {
     const unit    = units[key];
@@ -196,14 +195,14 @@ function renderIngredientCostsSection(col, _pageContainer) {
   saveBtn.type = 'button';
   saveBtn.className = 'btn btn-primary';
   saveBtn.textContent = 'Save Costs';
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     const newCosts = {};
     for (const key of keys) {
       const val = parseFloat(form.querySelector(`#cost-${key}`)?.value);
       newCosts[key] = isNaN(val) || val < 0 ? 0 : val;
     }
     try {
-      storage.saveSettings({ unitCosts: newCosts });
+      await storage.saveSettings({ unitCosts: newCosts });
       toast.show('success', 'Ingredient costs saved. Production cost calculations updated.');
     } catch (err) {
       toast.show('error', err.message || 'Failed to save costs.');
@@ -222,206 +221,172 @@ function renderIngredientCostsSection(col, _pageContainer) {
  * @param {HTMLElement} col
  * @param {HTMLElement} pageContainer
  */
-function renderBackupSection(col, pageContainer) {
+async function renderBackupSection(col, pageContainer) {
   const section = createSettingsCard('💾 Backup & Restore');
   col.appendChild(section);
 
   const hint = document.createElement('p');
   hint.className = 'settings-hint';
-  hint.textContent = 'Export all data as a JSON file for safekeeping. Import to restore on any device.';
+  hint.textContent = 'Export all data from the cloud database as a JSON file for safekeeping. Import to restore on any device.';
   section.appendChild(hint);
 
-  // ── Export ───────────────────────────────────────────────────────────────
+  // ── Export ─────────────────────────────────────────────────────────────
   const exportBtn = document.createElement('button');
   exportBtn.className = 'btn btn-primary';
   exportBtn.innerHTML = '⬇️ Export Full Backup';
-  exportBtn.addEventListener('click', () => {
+  exportBtn.addEventListener('click', async () => {
     try {
-      const json     = storage.exportBackup();
-      const dateStr  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const filename = `bakeflow-backup-${dateStr}.json`;
-      const blob     = new Blob([json], { type: 'application/json' });
-      const url      = URL.createObjectURL(blob);
-      const a        = document.createElement('a');
-      a.href         = url;
-      a.download     = filename;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
-      toast.show('success', `Backup exported: ${filename}`);
+      exportBtn.disabled    = true;
+      exportBtn.textContent = 'Preparing…';
+      await storage.exportBackup();   // opens a /api/settings/export download in a new tab
+      toast.show('success', 'Backup download started.');
     } catch (err) {
       logger.error('Export failed', err);
       toast.show('error', err.message || 'Export failed.');
+    } finally {
+      exportBtn.disabled  = false;
+      exportBtn.innerHTML = '⬇️ Export Full Backup';
     }
   }, { signal: controller.signal });
   section.appendChild(exportBtn);
 
-  // ── Import ───────────────────────────────────────────────────────────────
-  const importLabel = document.createElement('label');
-  importLabel.className = 'btn btn-secondary import-btn-label';
-  importLabel.innerHTML = '⬆️ Import Backup';
+  // ── Import (restore from a previously exported JSON) ───────────────────
+  const importInput = document.createElement('input');
+  importInput.type    = 'file';
+  importInput.accept  = '.json';
+  importInput.id      = 'settings-import-file';
+  importInput.style.display = 'none';
 
-  const fileInput = document.createElement('input');
-  fileInput.type   = 'file';
-  fileInput.accept = '.json';
-  fileInput.style.display = 'none';
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) {return;}
-
-    modal.confirm(
-      `⚠️ Importing "${file.name}" will OVERWRITE all current data. This cannot be undone. Are you sure?`,
-      () => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
+  importInput.addEventListener('change', () => {
+    const file = importInput.files?.[0];
+    if (!file) { return; }
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      modal.confirm(
+        `⚠️ Importing "${file.name}" will OVERWRITE all current data. This cannot be undone. Are you sure?`,
+        async () => {
           try {
-            storage.importBackup(ev.target.result);
-            toast.show('success', 'Backup imported successfully. Refreshing…');
-            setTimeout(() => render(pageContainer), 800);
+            await storage.importBackup(evt.target.result);
+            toast.show('success', 'Backup restored. Reloading…');
+            setTimeout(() => location.reload(), 1200);
           } catch (err) {
             logger.error('Import failed', err);
             toast.show('error', err.message || 'Import failed. Check the file format.');
           }
-        };
-        reader.onerror = () => toast.show('error', 'Failed to read file.');
-        reader.readAsText(file);
-      },
-      () => { fileInput.value = ''; },
-      'Confirm Data Import',
-      'Yes, Overwrite All Data',
-      'danger'
-    );
-    // Reset so same file can be selected again
-    fileInput.value = '';
+        },
+        () => { importInput.value = ''; },
+        'Confirm Data Import',
+        'Yes, Overwrite All Data',
+        'danger'
+      );
+    };
+    reader.onerror = () => toast.show('error', 'Failed to read file.');
+    reader.readAsText(file);
+    importInput.value = '';
   }, { signal: controller.signal });
+  section.appendChild(importInput);
 
-  importLabel.appendChild(fileInput);
+  const importLabel = document.createElement('label');
+  importLabel.htmlFor    = 'settings-import-file';
+  importLabel.className  = 'btn btn-secondary import-btn-label';
+  importLabel.style.marginTop = '0.5rem';
+  importLabel.innerHTML  = '⬆️ Import Cloud Backup';
   section.appendChild(importLabel);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STORAGE INFO
+// MIGRATION TOOL — localStorage → MongoDB (one-time, optional)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * @param {HTMLElement} col
- */
-function renderStorageSection(col) {
-  const section = createSettingsCard('📦 Storage Usage');
-  col.appendChild(section);
-
-  const { usedBytes, limitBytes, warningLevel } = storage.getStorageUsage();
-  const usedKB   = (usedBytes  / 1024).toFixed(1);
-  const limitKB  = (limitBytes / 1024).toFixed(0);
-  const usedPct  = ((usedBytes / limitBytes) * 100).toFixed(1);
-
-  const statusCls = warningLevel === 'ok' ? 'text-success' : warningLevel === 'warning' ? 'text-warning' : 'text-danger';
-
-  const info = document.createElement('div');
-  info.innerHTML = `
-    <div class="storage-bar-wrap">
-      <div class="storage-bar">
-        <div class="storage-bar__fill storage-bar__fill--${warningLevel}" style="width:${usedPct}%"></div>
-      </div>
-      <span class="${statusCls} font-semibold">${usedPct}% used</span>
-    </div>
-    <p class="settings-hint">${usedKB} KB of ~${limitKB} KB limit (localStorage)</p>
-    <p class="settings-hint">
-      Status: <strong class="${statusCls}">${warningLevel === 'ok' ? 'Healthy' : warningLevel === 'warning' ? 'Getting full — export a backup soon' : '⚠️ Critical — export backup immediately'}</strong>
-    </p>
-  `;
-  section.appendChild(info);
-
-  // Data counts
-  const counts = [
-    ['Batch Mixes',    storage.getBatchMixes().length],
-    ['Productions',    storage.getProductions().length],
-    ['Sales',          storage.getSales().length],
-    ['Customers',      storage.getCustomers().length],
-    ['Expenses',       storage.getExpenses().length],
-    ['Daily History',  storage.getAllDailyHistory().length]
-  ];
-
-  const countsEl = document.createElement('div');
-  countsEl.className = 'data-counts';
-  countsEl.innerHTML = counts.map(([label, count]) =>
-    `<div class="data-count-chip">
-       <span class="data-count-chip__label">${label}</span>
-       <span class="data-count-chip__value">${count}</span>
-     </div>`
-  ).join('');
-  section.appendChild(countsEl);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AUTO-BACKUPS LIST
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
+ * Renders the one-time localStorage-to-cloud migration card.
+ * Only useful if the user has old data in their browser's localStorage
+ * from before the backend was added.
  * @param {HTMLElement} col
  * @param {HTMLElement} pageContainer
  */
-function renderAutoBackupsSection(col, pageContainer) {
-  const backups = storage.getAutoBackups();
-  const section = createSettingsCard(`🔄 Auto-Backups (${backups.length})`);
+function renderMigrationSection(col, _pageContainer) {
+  const section = createSettingsCard('🚚 Migrate Old Data');
   col.appendChild(section);
 
   const hint = document.createElement('p');
   hint.className = 'settings-hint';
-  hint.textContent = `The last ${backups.length} auto-backups are shown below (kept after each production, sale, and expense).`;
+  hint.innerHTML = `
+    If you used BakeFlow before the cloud backend was set up, your old data is still
+    in this browser's <code>localStorage</code>. Use this tool to import it into the cloud
+    database — <strong>one time only</strong>.
+    <br><br>
+    After migration, your data will sync across all devices automatically.
+  `;
   section.appendChild(hint);
 
-  if (backups.length === 0) {
-    const p = document.createElement('p');
-    p.className = 'text-muted text-sm';
-    p.textContent = 'No auto-backups yet. They are created automatically as you use the app.';
-    section.appendChild(p);
+  // Check if there's anything in localStorage to migrate
+  const hasLegacyData = Object.keys(window.localStorage)
+    .some(k => k.startsWith('BF_'));
+
+  if (!hasLegacyData) {
+    const ok = document.createElement('p');
+    ok.style.cssText = 'color:var(--color-success);font-size:var(--font-size-sm);font-weight:var(--font-weight-semibold);';
+    ok.textContent = '✅ No legacy localStorage data found — nothing to migrate.';
+    section.appendChild(ok);
     return;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'auto-backup-list';
+  // Show what's available
+  const legacyKeys = Object.keys(window.localStorage).filter(k => k.startsWith('BF_'));
+  const preview = document.createElement('p');
+  preview.className = 'settings-hint';
+  preview.innerHTML = `Found <strong>${legacyKeys.length} keys</strong> in localStorage: <code>${legacyKeys.join(', ')}</code>`;
+  section.appendChild(preview);
 
-  backups.forEach((backup, idx) => {
-    const li = document.createElement('li');
-    li.className = 'auto-backup-item';
-
-    const time = formatDateTime(backup.timestamp);
-    li.innerHTML = `
-      <div class="auto-backup-item__info">
-        <span class="auto-backup-item__index">#${backups.length - idx}</span>
-        <span class="auto-backup-item__time">${time}</span>
-      </div>
-    `;
-
-    const restoreBtn = document.createElement('button');
-    restoreBtn.className = 'btn btn-ghost btn-sm';
-    restoreBtn.textContent = 'Restore';
-    restoreBtn.addEventListener('click', () => {
-      modal.confirm(
-        `Restore auto-backup from ${time}? This will overwrite all current data.`,
-        () => {
-          try {
-            storage.importBackup(JSON.stringify({ exportedAt: backup.timestamp, version: '1.0', data: backup.data }));
-            toast.show('success', 'Auto-backup restored successfully.');
-            setTimeout(() => render(pageContainer), 500);
-          } catch (err) {
-            toast.show('error', err.message || 'Restore failed.');
+  const migrateBtn = document.createElement('button');
+  migrateBtn.className  = 'btn btn-primary';
+  migrateBtn.innerHTML  = '🚀 Migrate to Cloud';
+  migrateBtn.addEventListener('click', () => {
+    modal.confirm(
+      'This will import all localStorage data into the cloud database. Existing cloud records with the same IDs will be replaced. Continue?',
+      async () => {
+        migrateBtn.disabled    = true;
+        migrateBtn.textContent = 'Migrating…';
+        try {
+          // Build the v1 data object from localStorage
+          const data = {};
+          for (const key of legacyKeys) {
+            try { data[key] = JSON.parse(window.localStorage.getItem(key)); }
+            catch { data[key] = window.localStorage.getItem(key); }
           }
-        },
-        undefined,
-        'Restore Auto-Backup',
-        'Yes, Restore',
-        'danger'
-      );
-    }, { signal: controller.signal });
+          const payload = JSON.stringify({ exportedAt: new Date().toISOString(), version: '1.0', data });
+          await storage.importBackup(payload);
+          toast.show('success', '✅ Migration complete! Your data is now in the cloud.', 6000);
 
-    li.appendChild(restoreBtn);
-    list.appendChild(li);
-  });
-
-  section.appendChild(list);
+          // Optionally clear localStorage after migration
+          modal.confirm(
+            'Migration successful! Do you want to clear the old localStorage data? (Recommended — it is now safely in the cloud.)',
+            () => {
+              for (const key of legacyKeys) { window.localStorage.removeItem(key); }
+              toast.show('info', 'Old localStorage data cleared.');
+              location.reload();
+            },
+            () => { location.reload(); },
+            'Clear Old Data',
+            'Yes, Clear localStorage',
+            'warning'
+          );
+        } catch (err) {
+          logger.error('Migration failed', err);
+          toast.show('error', err.message || 'Migration failed. Check the console for details.');
+        } finally {
+          migrateBtn.disabled    = false;
+          migrateBtn.innerHTML   = '🚀 Migrate to Cloud';
+        }
+      },
+      undefined,
+      'Confirm Migration',
+      'Migrate',
+      'primary'
+    );
+  }, { signal: controller.signal });
+  section.appendChild(migrateBtn);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

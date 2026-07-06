@@ -4,7 +4,8 @@
  */
 
 import storage from '../storage.js';
-import toast from './toast.js';
+import auth    from '../auth.js';
+import toast   from './toast.js';
 
 /** @type {AbortController|null} */
 let controller = null;
@@ -71,16 +72,31 @@ function init(navbarEl) {
     const newTheme = isDark ? 'light' : 'dark';
     html.setAttribute('data-theme', newTheme);
     themeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙';
-    // Persist theme preference
-    try { storage.saveSettings({ ...storage.getSettings(), theme: newTheme }); }
-    catch (_) { /* non-critical */ }
+    // Persist theme preference (async — non-critical)
+    storage.saveSettings({ theme: newTheme }).catch(() => {});
+  }, { signal });
+
+  // Logout button
+  const logoutBtn = document.createElement('button');
+  logoutBtn.className = 'btn btn-ghost btn-icon navbar__logout-btn';
+  logoutBtn.setAttribute('aria-label', 'Log out');
+  logoutBtn.textContent = '🔒';
+  logoutBtn.title = `Log out${auth.getCurrentUser()?.email ? ` (${auth.getCurrentUser().email})` : ''}`;
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await auth.logout();
+      toast.show('success', 'Logged out successfully.');
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      toast.show('error', 'Logout failed. Please try again.');
+    }
   }, { signal });
 
   navbarEl.appendChild(menuBtn);
   navbarEl.appendChild(titleEl);
   navbarEl.appendChild(spacer);
-  navbarEl.appendChild(storageBtn);
   navbarEl.appendChild(themeBtn);
+  navbarEl.appendChild(logoutBtn);
 
   // Update title on route changes
   window.addEventListener('bakeflow:route-changed', (e) => {
@@ -146,7 +162,8 @@ if (!document.getElementById('bakeflow-navbar-styles')) {
       font-size: var(--font-size-base); font-weight: var(--font-weight-semibold);
       color: var(--color-text-primary);
     }
-    .navbar__theme-btn, .navbar__storage-btn { font-size: 1rem; }
+    .navbar__theme-btn  { font-size: 1rem; }
+    .navbar__logout-btn { font-size: 1rem; }
   `;
   document.head.appendChild(style);
 }

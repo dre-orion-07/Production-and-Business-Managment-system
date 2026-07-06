@@ -44,9 +44,9 @@ const BREAD_LABELS = {
 /**
  * @param {HTMLElement} container
  */
-function init(container) {
+async function init(container) {
   controller = new AbortController();
-  render(container);
+  await render(container);
 }
 
 function destroy() {
@@ -62,10 +62,11 @@ function destroy() {
  * Renders the production page: form at top, history table below.
  * @param {HTMLElement} container
  */
-function render(container) {
-  container.innerHTML = '';
+async function render(container) {
+  container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;min-height:200px;"><div class="spinner" style="width:32px;height:32px;border-radius:50%;border:3px solid var(--color-border);border-top-color:var(--color-primary,#6366f1);animation:spin 0.7s linear infinite"></div></div>';
 
   // ── Page header ──────────────────────────────────────────────────────────
+  container.innerHTML = '';
   const header = document.createElement('div');
   header.className = 'page-header';
   header.innerHTML = `
@@ -84,13 +85,13 @@ function render(container) {
   // Left: production form
   const formPanel = document.createElement('div');
   formPanel.className = 'production-form-panel card';
-  renderProductionForm(formPanel, container);
+  await renderProductionForm(formPanel, container);
   layout.appendChild(formPanel);
 
   // Right: today's production history
   const historyPanel = document.createElement('div');
   historyPanel.className = 'production-history-panel';
-  renderProductionHistory(historyPanel);
+  await renderProductionHistory(historyPanel);
   layout.appendChild(historyPanel);
 }
 
@@ -103,10 +104,10 @@ function render(container) {
  * @param {HTMLElement} panel
  * @param {HTMLElement} pageContainer - for re-render on save
  */
-function renderProductionForm(panel, pageContainer) {
+async function renderProductionForm(panel, pageContainer) {
   panel.innerHTML = '';
 
-  const batches = storage.getBatchMixes();
+  const batches = await storage.getBatchMixes();
 
   if (batches.length === 0) {
     panel.innerHTML = `
@@ -219,12 +220,12 @@ function renderProductionForm(panel, pageContainer) {
   const mixesInput   = form.querySelector('#prod-mixes');
   const outputInputs = form.querySelectorAll('[name^="out_"]');
 
-  /** Updates ingredient preview and cost when batch/mixes change */
-  function updateIngredientPreview() {
+  /** Updates ingredient preview and cost when batch/mixes change (Task 5) */
+  async function updateIngredientPreview() {
     const batchId = batchSelect.value;
     const mixes   = Math.max(1, parseInt(mixesInput.value) || 1);
-    const batch   = storage.getBatchMixById(batchId);
-    const stock   = storage.getIngredientStock();
+    const batch   = await storage.getBatchMixById(batchId);
+    const stock   = await storage.getIngredientStock();
 
     if (!batch) {
       ingSection.innerHTML = `<p class="ing-preview__empty text-muted">Select a batch to see ingredient quantities.</p>`;
@@ -233,35 +234,62 @@ function renderProductionForm(panel, pageContainer) {
     }
 
     const used     = computeIngredientsUsed(batch.ingredients, mixes);
-    const settings = storage.getSettings();
-    const { cost, hasMissingCosts } = computeProductionCost(used, settings.unitCosts || {});
-    const labels = storage.getIngredientLabels();
+    const settings = await storage.getSettings();
+    const labels   = await storage.getIngredientLabels();
+
+    // ── Task 5: per-ingredient cost, water excluded ────────────────────────
+    // Fetch raw ingredient docs to get currentPrice (more accurate than settings.unitCosts)
+    let unitCosts = {};
+    try {
+      const { get } = await import('../api.js');
+      const { ingredients: rawDocs } = await get('/ingredients');
+      for (const doc of (rawDocs || [])) {
+        unitCosts[doc.key] = doc.currentPrice ?? (settings.unitCosts?.[doc.key] || 0);
+      }
+    } catch {
+      unitCosts = settings.unitCosts || {};
+    }
+
+    let totalCost        = 0;
+    let hasMissingCosts  = false;
 
     // Build preview table
     let html = `<h3 class="form-section-title">Ingredients Used</h3><div class="ing-preview-grid">`;
     for (const key of Object.keys(used)) {
       const { amount, unit } = used[key] || { amount: 0, unit: '' };
-      if (amount === 0) {continue;}
+      if (amount === 0) { continue; }
       const available  = stock[key]?.amount ?? 0;
       const sufficient = available >= amount;
+
+      // Task 5: cost line (water excluded)
+      const isWater    = key === 'water';
+      const unitCost   = isWater ? 0 : (unitCosts[key] ?? 0);
+      const lineCost   = isWater ? 0 : parseFloat((amount * unitCost).toFixed(2));
+      if (!isWater && unitCost === 0) { hasMissingCosts = true; }
+      if (!isWater) { totalCost += lineCost; }
+
       html += `
         <div class="ing-preview-item ${sufficient ? '' : 'ing-preview-item--warn'}">
           <span class="ing-preview-item__name">${labels[key] || key}</span>
           <span class="ing-preview-item__amount">${amount} ${unit}</span>
           ${!sufficient
-            ? `<span class="ing-preview-item__stock-warn" title="Insufficient stock">
-                ⚠ Have: ${available} ${unit}
-               </span>`
+            ? `<span class="ing-preview-item__stock-warn" title="Insufficient stock">⚠ Have: ${available} ${unit}</span>`
             : `<span class="ing-preview-item__stock-ok">✓ ${available} ${unit} avail.</span>`}
+          ${!isWater
+            ? `<span class="ing-preview-item__cost">${unitCost > 0 ? formatCurrency(lineCost) : '<em>no price set</em>'}</span>`
+            : `<span class="ing-preview-item__cost" style="color:var(--color-text-muted);font-style:italic;">excluded</span>`}
         </div>`;
     }
     html += `</div>`;
     ingSection.innerHTML = html;
 
-    // Cost
-    document.getElementById('prod-cost').textContent = formatCurrency(cost);
+    // Task 5: prominent total cost display
+    const costEl = document.getElementById('prod-cost');
+    totalCost = parseFloat(totalCost.toFixed(2));
+    costEl.textContent = formatCurrency(totalCost);
+    costEl.style.color = totalCost > 0 ? 'var(--color-primary,#6366f1)' : '';
     if (hasMissingCosts) {
-      document.getElementById('prod-cost').title = 'Some ingredient costs not set in Settings';
+      costEl.title = 'Some ingredient costs not set — go to Settings to add them';
     }
   }
 
@@ -337,16 +365,16 @@ function handleProductionSubmit(form, pageContainer) {
  * @param {object} output
  * @param {HTMLElement} pageContainer
  */
-function saveProduction(batchId, numberOfMixes, date, output, pageContainer) {
+async function saveProduction(batchId, numberOfMixes, date, output, pageContainer) {
   try {
-    const record = storage.saveProduction({ batchId, numberOfMixes, output, date });
+    const record = await storage.saveProduction({ batchId, numberOfMixes, output, date });
     toast.show('success', `Production saved — ${record.totalOutput} loaves recorded.`);
-    render(pageContainer);
+    await render(pageContainer);
   } catch (err) {
     logger.error('Production save failed', err);
     // Show each error line as a toast
     err.message.split('\n').forEach(line => {
-      if (line.trim()) {toast.show('error', line.trim(), 6000);}
+      if (line.trim()) { toast.show('error', line.trim(), 6000); }
     });
   }
 }
@@ -359,7 +387,7 @@ function saveProduction(batchId, numberOfMixes, date, output, pageContainer) {
  * Renders the production history for today (and optionally past dates).
  * @param {HTMLElement} panel
  */
-function renderProductionHistory(panel) {
+async function renderProductionHistory(panel) {
   panel.innerHTML = '';
 
   const heading = document.createElement('h2');
@@ -367,7 +395,7 @@ function renderProductionHistory(panel) {
   heading.textContent = "Today's Production";
   panel.appendChild(heading);
 
-  const todayRecords = storage.getProductions({ date: today() });
+  const todayRecords = await storage.getProductions({ date: today() });
 
   if (todayRecords.length === 0) {
     const empty = document.createElement('div');
@@ -413,7 +441,7 @@ function renderProductionHistory(panel) {
   allHeading.textContent = 'All Production History';
   panel.appendChild(allHeading);
 
-  const allRecords = storage.getProductions().slice().reverse(); // newest first
+  const allRecords = (await storage.getProductions()).slice().reverse(); // newest first
   const allTableContainer = document.createElement('div');
 
   table.render(allTableContainer, {
@@ -502,6 +530,8 @@ if (!document.getElementById('bakeflow-production-styles')) {
     .ing-preview-item__amount { color: var(--color-text-secondary); }
     .ing-preview-item__stock-warn { color: var(--color-warning); font-size: var(--font-size-xs); margin-top: 2px; }
     .ing-preview-item__stock-ok  { color: var(--color-success);  font-size: var(--font-size-xs); margin-top: 2px; }
+    /* Task 5: per-ingredient cost */
+    .ing-preview-item__cost { font-size: var(--font-size-xs); color: var(--color-primary, #6366f1); font-weight: var(--font-weight-semibold); margin-top: 2px; }
 
     /* Output grid */
     .output-section { display: flex; flex-direction: column; gap: 0.75rem; }
