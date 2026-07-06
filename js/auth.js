@@ -17,12 +17,21 @@ let _currentUser = null;
  * @returns {Promise<boolean>}
  */
 export async function checkSession() {
+  const token = localStorage.getItem('bakeflow_token');
+  if (!token) {
+    _currentUser = null;
+    return false;
+  }
+
   try {
+    api.setAuthToken(token);
     const data = await api.get('/auth/me');
     _currentUser = data.user;
     return true;
   } catch (err) {
     if (err.status === 401) {
+      localStorage.removeItem('bakeflow_token');
+      api.setAuthToken(null);
       _currentUser = null;
       return false;
     }
@@ -38,6 +47,10 @@ export async function checkSession() {
  */
 export async function login(email, password) {
   const data   = await api.post('/auth/login', { email, password });
+  if (data.token) {
+    localStorage.setItem('bakeflow_token', data.token);
+    api.setAuthToken(data.token);
+  }
   _currentUser  = data.user;
   return _currentUser;
 }
@@ -51,6 +64,10 @@ export async function login(email, password) {
  */
 export async function signup(email, password, bakeryName) {
   const data   = await api.post('/auth/signup', { email, password, bakeryName });
+  if (data.token) {
+    localStorage.setItem('bakeflow_token', data.token);
+    api.setAuthToken(data.token);
+  }
   _currentUser  = data.user;
   return _currentUser;
 }
@@ -63,6 +80,8 @@ export async function logout() {
   try {
     await api.post('/auth/logout', {});
   } catch { /* ignore — server might be unreachable */ }
+  localStorage.removeItem('bakeflow_token');
+  api.setAuthToken(null);
   _currentUser = null;
 }
 

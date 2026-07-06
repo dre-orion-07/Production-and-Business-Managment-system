@@ -31,28 +31,11 @@ const BUILTIN_INGREDIENTS = [
 ];
 
 /**
- * Issues a signed JWT and sets it as an HttpOnly cookie.
- * @param {import('express').Response} res
+ * Issues a signed JWT.
  * @param {string} userId
  */
-function issueToken(res, userId) {
-  const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES });
-
-  // Parse expiry duration into milliseconds for maxAge
-  const match   = JWT_EXPIRES.match(/^(\d+)([smhd])$/);
-  const unit    = match ? match[2] : 'd';
-  const value   = match ? parseInt(match[1], 10) : 30;
-  const msMap   = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
-  const maxAge  = value * (msMap[unit] || 86400000);
-
-  res.cookie('bakeflow_token', token, {
-    httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge,
-  });
-
-  return token;
+function issueToken(userId) {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRES });
 }
 
 /**
@@ -90,10 +73,11 @@ async function signup(req, res) {
     // Seed default settings
     await Settings.create({ userId: user._id });
 
-    issueToken(res, user._id.toString());
+    const token = issueToken(user._id.toString());
 
     res.status(201).json({
       message: 'Account created successfully.',
+      token,
       user: { id: user._id, email: user.email, bakeryName: user.bakeryName },
     });
   } catch (err) {
@@ -126,10 +110,11 @@ async function login(req, res) {
     user.lastLoginAt = new Date();
     await user.save();
 
-    issueToken(res, user._id.toString());
+    const token = issueToken(user._id.toString());
 
     res.json({
       message: 'Logged in successfully.',
+      token,
       user: { id: user._id, email: user.email, bakeryName: user.bakeryName },
     });
   } catch (err) {
@@ -140,10 +125,9 @@ async function login(req, res) {
 
 /**
  * POST /api/auth/logout
- * Clears the auth cookie.
+ * Clears authentication.
  */
 function logout(req, res) {
-  res.clearCookie('bakeflow_token', { httpOnly: true, sameSite: 'lax' });
   res.json({ message: 'Logged out successfully.' });
 }
 

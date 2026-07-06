@@ -10,14 +10,13 @@ require('dotenv').config();
 
 const express      = require('express');
 const cors         = require('cors');
-const cookieParser = require('cookie-parser');
 const connectDB    = require('./config/db');
 
 const app  = express();
 const PORT = parseInt(process.env.PORT, 10) || 3001;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CORS — allow the frontend origin with credentials (cookies)
+// CORS — allow the frontend origin
 // ─────────────────────────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5500')
   .split(',')
@@ -32,7 +31,6 @@ app.use(cors({
     }
     callback(new Error(`CORS: origin "${origin}" not allowed`));
   },
-  credentials: true,   // required for HttpOnly cookies
 }));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +38,6 @@ app.use(cors({
 // ─────────────────────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));   // 10 MB for backup imports
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROUTES

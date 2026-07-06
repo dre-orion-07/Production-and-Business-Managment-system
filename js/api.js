@@ -14,6 +14,16 @@ export const API_BASE = isLocalDev
   ? `http://${window.location.hostname}:3001/api`
   : 'https://production-and-business-managment-system.onrender.com/api';
 
+let authToken = null;
+
+/**
+ * Sets the authorization token for subsequent API requests.
+ * @param {string|null} token
+ */
+export function setAuthToken(token) {
+  authToken = token;
+}
+
 /**
  * Core fetch wrapper.
  * @param {string} path     - e.g. '/ingredients'
@@ -24,13 +34,18 @@ export const API_BASE = isLocalDev
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
 
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(url, {
     ...options,
-    credentials: 'include',    // sends the HttpOnly cookie automatically
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   if (response.status === 401 && path !== '/auth/me' && path !== '/auth/login') {
@@ -107,5 +122,5 @@ export function del(path) {
   return request(path, { method: 'DELETE' });
 }
 
-const api = { get, post, put, patch, del };
+const api = { get, post, put, patch, del, setAuthToken };
 export default api;

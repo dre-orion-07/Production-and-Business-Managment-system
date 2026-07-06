@@ -1,6 +1,6 @@
 /**
  * @fileoverview BakeFlow ERP — middleware/auth.js
- * JWT verification middleware. Reads token from HttpOnly cookie.
+ * JWT verification middleware. Reads token from Authorization: Bearer header.
  * Attaches req.userId to all protected routes.
  */
 
@@ -9,14 +9,19 @@
 const jwt = require('jsonwebtoken');
 
 /**
- * Middleware that verifies the JWT from the 'bakeflow_token' HttpOnly cookie.
+ * Middleware that verifies the JWT from the 'Authorization' Bearer header.
  * Responds with 401 if missing or invalid.
  * @param {import('express').Request}  req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  */
 function requireAuth(req, res, next) {
-  const token = req.cookies?.bakeflow_token;
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  let token = null;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
 
   if (!token) {
     return res.status(401).json({ error: 'Authentication required. Please log in.' });
