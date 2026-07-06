@@ -8,7 +8,11 @@
  */
 
 /** Base URL for the Express API — dynamically matches frontend host (e.g., localhost or 127.0.0.1) */
-export const API_BASE = `http://${window.location.hostname}:3001/api`;
+const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+export const API_BASE = isLocalDev
+  ? `http://${window.location.hostname}:3001/api`
+  : 'https://production-and-business-managment-system.onrender.com/api';
 
 /**
  * Core fetch wrapper.
@@ -43,7 +47,7 @@ async function request(path, options = {}) {
     const message = data?.error || `Request failed: ${response.status} ${response.statusText}`;
     const err = new Error(message);
     err.status = response.status;
-    err.data   = data;
+    err.data = data;
     window.dispatchEvent(new CustomEvent('bakeflow:api-error', { detail: { message, status: response.status } }));
     throw err;
   }
